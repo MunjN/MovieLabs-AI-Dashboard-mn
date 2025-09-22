@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -103,5 +103,324 @@
       }
     })();
   </script>
+</body>
+</html>
+
+ -->
+
+
+
+
+
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Dashboard Embedded</title>
+  <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.19.1/dist/powerbi.min.js"></script>
+  <script src="/amazon-cognito-identity.min.js"></script>
+  <style>
+    body {
+      background-color: #1d186d;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      color: white;
+    }
+    header {
+      position: absolute;
+      top: 15px;
+      left: 20px;
+    }
+    header img {
+      height: 50px;
+      cursor: pointer;
+    }
+    .banner {
+      width: 100%;
+      text-align: center;
+      margin-top: 40px;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.4;
+      color: white;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .banner span {
+      display: block;
+      font-size: 16px;
+      font-weight: 400;
+      margin-top: 6px;
+      opacity: 0.9;
+    }
+    .login-container {
+      background: white;
+      color: #1d186d;
+      padding: 40px 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      width: 420px;
+      margin-top: 40px;
+    }
+    .tab-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      gap: 20px;
+    }
+    .tab-buttons button {
+      flex: 1;
+      padding: 10px;
+      font-weight: 600;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #f1f1f1;
+      color: #1d186d;
+      transition: 0.2s ease-in-out;
+    }
+    .tab-buttons button.active {
+      background: #1d186d;
+      color: white;
+    }
+    h2 {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button[type="submit"], button[type="button"] {
+      width: 100%;
+      padding: 10px;
+      background: #1d186d;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover { background: #151255; }
+    #status {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Logo -->
+  <header>
+    <a href="https://me-dmz.com" target="_blank">
+      <img src="logo.png" alt="ME-DMZ Logo">
+    </a>
+  </header>
+
+  <!-- Banner -->
+  <div class="banner">
+    Welcome to the ME-NEXUS AI Dashboard
+    <span>Brought to you by ME-DMZ</span>
+  </div>
+
+  <!-- Power BI -->
+  <div id="reportContainer" style="width:100%; height:100vh; border:0; display:none;"></div>
+
+  <!-- Auth -->
+  <div class="login-container" id="authContainer">
+    <div class="tab-buttons">
+      <button id="loginTab" class="active">Sign In</button>
+      <button id="signupTab">Create Account</button>
+    </div>
+
+    <!-- Login -->
+    <form id="loginForm">
+      <h2>Sign In</h2>
+      <label>Email</label>
+      <input type="email" id="email" required />
+      <label>Password</label>
+      <input type="password" id="password" required />
+      <button type="submit">Sign In</button>
+      <p style="text-align:center; margin-top:10px;">
+        <a href="#" id="forgotPasswordLink">Forgot Password?</a>
+      </p>
+    </form>
+
+    <!-- Signup -->
+    <form id="signupForm" class="hidden">
+      <h2>Create Account</h2>
+      <label>Full Name</label>
+      <input type="text" id="fullName" required />
+      <label>Email</label>
+      <input type="email" id="newEmail" required />
+      <label>Password</label>
+      <input type="password" id="newPassword" required />
+      <label>Confirm Password</label>
+      <input type="password" id="confirmPassword" required />
+      <button type="submit">Sign Up</button>
+    </form>
+
+    <!-- Verify -->
+    <form id="verifyForm" class="hidden">
+      <h2>Enter Verification Code</h2>
+      <label>Code from email</label>
+      <input type="text" id="code" required />
+      <button type="submit">Verify</button>
+    </form>
+
+    <!-- Forgot Password -->
+    <form id="forgotPasswordForm" class="hidden">
+      <h2>Reset Password</h2>
+      <label>Full Name</label>
+      <input type="text" id="fpFullName" required />
+      <label>Email</label>
+      <input type="email" id="fpEmail" required />
+      <button type="button" id="sendCodeBtn">Send Reset Code</button>
+      <br><br>
+      <label>Verification Code</label>
+      <input type="text" id="fpCode" required />
+      <label>New Password</label>
+      <input type="password" id="fpNewPassword" required />
+      <button type="submit">Confirm New Password</button>
+    </form>
+
+    <p id="status"></p>
+  </div>
+
+<script>
+const loginTab=document.getElementById('loginTab');
+const signupTab=document.getElementById('signupTab');
+const loginForm=document.getElementById('loginForm');
+const signupForm=document.getElementById('signupForm');
+const verifyForm=document.getElementById('verifyForm');
+const forgotPasswordForm=document.getElementById('forgotPasswordForm');
+const authContainer=document.getElementById('authContainer');
+function setStatus(msg,isError=false){const status=document.getElementById('status');status.textContent=msg;status.style.color=isError?'red':'green';}
+loginTab.addEventListener('click',()=>{loginTab.classList.add('active');signupTab.classList.remove('active');loginForm.classList.remove('hidden');signupForm.classList.add('hidden');verifyForm.classList.add('hidden');forgotPasswordForm.classList.add('hidden');setStatus('');});
+signupTab.addEventListener('click',()=>{signupTab.classList.add('active');loginTab.classList.remove('active');loginForm.classList.add('hidden');signupForm.classList.remove('hidden');verifyForm.classList.add('hidden');forgotPasswordForm.classList.add('hidden');setStatus('');});
+</script>
+
+<script>
+window.addEventListener('DOMContentLoaded',()=>{
+  const {CognitoUserPool,CognitoUser,AuthenticationDetails,CognitoUserAttribute}=AmazonCognitoIdentity;
+  const poolData={UserPoolId:'us-east-1_RBQ3i1GpX',ClientId:'g5qun1af1nek4j1not9k0826i'};
+  const userPool=new CognitoUserPool(poolData);
+  let pendingUser=null;
+
+  // Login
+  loginForm.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('password').value;
+    const user=new CognitoUser({Username:email,Pool:userPool});
+    const authDetails=new AuthenticationDetails({Username:email,Password:password});
+    user.authenticateUser(authDetails,{
+      onSuccess:async(result)=>{
+        const idToken=result.getIdToken();
+        const jwt=idToken.getJwtToken();
+        const groups=idToken.decodePayload()['cognito:groups']||[];
+        if(groups.includes('ME-DMZ_Internal_Team')){
+          document.cookie=`idToken=${jwt}; path=/; max-age=3600; Secure; SameSite=Strict`;
+          authContainer.style.display='none';
+          document.querySelector('header').style.display='none';
+          document.querySelector('.banner').style.display='none';
+          document.getElementById('reportContainer').style.display='block';
+          await initialize(jwt);
+        }else{
+          setStatus('Awaiting Admin Approval. You cannot access the dashboard yet.',true);
+          user.signOut();
+        }
+      },
+      onFailure:(err)=>setStatus(err.message||'Login failed',true)
+    });
+  });
+
+  // Forgot Password
+  document.getElementById('forgotPasswordLink').addEventListener('click',()=>{
+    loginForm.classList.add('hidden');
+    signupForm.classList.add('hidden');
+    verifyForm.classList.add('hidden');
+    forgotPasswordForm.classList.remove('hidden');
+    setStatus('');
+  });
+  document.getElementById('sendCodeBtn').addEventListener('click',()=>{
+    const email=document.getElementById('fpEmail').value;
+    const user=new CognitoUser({Username:email,Pool:userPool});
+    user.forgotPassword({
+      onSuccess:()=>setStatus('Reset code sent to your email.'),
+      onFailure:(err)=>setStatus(err.message||'Error sending reset code',true)
+    });
+  });
+  forgotPasswordForm.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const email=document.getElementById('fpEmail').value;
+    const code=document.getElementById('fpCode').value;
+    const newPassword=document.getElementById('fpNewPassword').value;
+    const user=new CognitoUser({Username:email,Pool:userPool});
+    user.confirmPassword(code,newPassword,{
+      onSuccess:()=>{
+        setStatus('Password reset successful! You can now log in.');
+        forgotPasswordForm.classList.add('hidden');
+        loginForm.classList.remove('hidden');
+        loginTab.click();
+      },
+      onFailure:(err)=>setStatus(err.message||'Failed to reset password',true)
+    });
+  });
+
+  // Signup
+  signupForm.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const fullName=document.getElementById('fullName').value;
+    const email=document.getElementById('newEmail').value;
+    const password=document.getElementById('newPassword').value;
+    const confirmPassword=document.getElementById('confirmPassword').value;
+    if(password!==confirmPassword){setStatus("Passwords do not match",true);return;}
+    const attributeList=[new CognitoUserAttribute({Name:'name',Value:fullName})];
+    userPool.signUp(email,password,attributeList,null,(err,result)=>{
+      if(err){setStatus(err.message||'Signup failed',true);}
+      else{pendingUser=result.user;setStatus('Signup successful! Check your email for a verification code.');signupForm.classList.add('hidden');verifyForm.classList.remove('hidden');}
+    });
+  });
+
+  // Verify
+  verifyForm.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const code=document.getElementById('code').value;
+    if(!pendingUser){setStatus('No pending signup found. Please sign up again.',true);verifyForm.classList.add('hidden');signupForm.classList.remove('hidden');return;}
+    pendingUser.confirmRegistration(code,true,(err)=>{
+      if(err){setStatus(err.message||'Verification failed',true);}
+      else{setStatus('Account verified! You can now log in.');verifyForm.classList.add('hidden');loginForm.classList.remove('hidden');loginTab.click();}
+    });
+  });
+});
+</script>
+
+<script>
+async function initialize(idToken){
+  const backendUrl="https://movielabs-ai-dashboard-mn.onrender.com";
+  const embedUrl="https://app.powerbi.com/reportEmbed?reportId=9f92cc54-8318-44c4-a671-a020ea14ef56&groupId=4c6a6199-2d9c-423c-a366-7e72edc983ad&w=2&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLUNBTkFEQS1DRU5UUkFMLXJlZGlyZWN0LmFuYWx5c2lzLndpbmRvd3MubmV0IiwiZW1iZWRGZWF0dXJlcyI6eyJ1c2FnZU1ldHJpY3NWTmV4dCI6dHJ1ZX19";
+  let embedToken=null;
+  async function fetchAuthToken(){const r=await fetch(`${backendUrl}/auth-token`,{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();return d.access_token;}
+  async function fetchEmbedToken(authToken){const r=await fetch(`${backendUrl}/embed-token`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({authToken})});const d=await r.json();embedToken=d.token;}
+  function embedReport(){const models=window["powerbi-client"].models;const config={type:"report",tokenType:models.TokenType.Embed,accessToken:embedToken,embedUrl,id:"9f92cc54-8318-44c4-a671-a020ea14ef56",permissions:models.Permissions.All,settings:{filterPaneEnabled:false,navContentPaneEnabled:true}};const c=document.getElementById("reportContainer");powerbi.reset(c);powerbi.embed(c,config);}
+  try{const authToken=await fetchAuthToken();await fetchEmbedToken(authToken);embedReport();
+    setInterval(async()=>{try{console.log("Refreshing embed token...");const newAuthToken=await fetchAuthToken();await fetchEmbedToken(newAuthToken);embedReport();console.log("Embed token refreshed successfully");}catch(e){console.error("Failed to refresh embed token:",e);}},40*60*1000);
+  }catch(e){console.error("Error initializing report:",e);}
+}
+</script>
 </body>
 </html>
