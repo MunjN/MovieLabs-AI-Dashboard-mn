@@ -332,7 +332,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         const idToken=result.getIdToken();
         const jwt=idToken.getJwtToken();
         const groups=idToken.decodePayload()['cognito:groups']||[];
-        if(groups.includes('ME-DMZ_Internal_Team')){
+        if(groups.includes('ME-DMZ_Internal_Team') || groups.includes('HP_TEAM') || groups.includes('EPIC_APPROVED')){
           document.cookie=`idToken=${jwt}; path=/; max-age=3600; Secure; SameSite=Strict`;
           authContainer.style.display='none';
           document.querySelector('header').style.display='none';
@@ -424,3 +424,4 @@ async function initialize(idToken){
 </script>
 </body>
 </html>
+
