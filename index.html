@@ -372,6 +372,8 @@ signupTab.addEventListener('click',()=>{signupTab.classList.add('active');loginT
   const chatWindow = document.getElementById('chatWindow');
   const chatLog = document.getElementById('chatLog');
   const chatInput = document.getElementById('chatMessage');
+  let sessionId = crypto.randomUUID();
+
   document.getElementById('openChatBtn').addEventListener('click', () => {
     chatWindow.style.display = chatWindow.style.display === 'none' ? 'flex' : 'none';
   });
@@ -386,27 +388,47 @@ signupTab.addEventListener('click',()=>{signupTab.classList.add('active');loginT
   async function sendChat() {
     const message = chatInput.value.trim();
     if (!message) return;
+
     appendMessage('You', message);
     chatInput.value = '';
-    const res = await fetch("https://movielabs-ai-dashboard-mn.onrender.com/chat", {
-      method: "POST",
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
-    });
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let gptText = '';
-    appendMessage('ME-AI', ''); // Append an empty message shell
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-      gptText += chunk;
-      // Update the last child (the empty shell) with the streaming text
-      chatLog.lastChild.innerHTML = `<strong>ME-AI:</strong> ${gptText}`;
+
+    // Create placeholder for streaming text
+    const shell = document.createElement('div');
+    shell.innerHTML = `<strong>ME-AI:</strong> `;
+    chatLog.appendChild(shell);
+
+    try {
+      const res = await fetch("https://movielabs-ai-dashboard-mn.onrender.com/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, sessionId }),
+      });
+
+      if (!res.ok) {
+        shell.innerHTML += "(Server error — please try again)";
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let partial = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        partial += chunk;
+        shell.innerHTML = `<strong>ME-AI:</strong> ${partial}`;
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+
+    } catch (err) {
+      console.error("Chat error:", err);
+      shell.innerHTML += " (Connection error)";
     }
   }
 </script>
+
 <script>
 async function initialize(idToken) {
   const backendUrl = "https://movielabs-ai-dashboard-mn.onrender.com";
@@ -481,3 +503,4 @@ async function initialize(idToken) {
 
 </body>
 </html>
+
