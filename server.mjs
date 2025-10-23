@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { parse } from "csv-parse/sync";
 import { OpenAI } from "openai";
-import { search as websearch } from "duckduckgo-search";
+import google from "googlethis";
 import fetch from "node-fetch";
 
 dotenv.config();
@@ -151,8 +151,8 @@ app.post("/chat", async (req, res) => {
         console.log(`🌐 ME-AI websearch: ${q}`);
 
         try {
-          const results = await websearch(q, { safeSearch: false });
-          const summary = results
+          const searchResults = await google.search(q, { safe: false });
+          const summary = searchResults.results
             .slice(0, 3)
             .map(
               (r) =>
