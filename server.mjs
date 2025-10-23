@@ -1,11 +1,11 @@
-// server.mjs (sort of)
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
 import dotenv from "dotenv";
 import fs from "fs";
 import { parse } from "csv-parse/sync";
 import { OpenAI } from "openai";
+import { websearch } from "duckduckgo-search-api";
+import fetch from "node-fetch";
 
 dotenv.config();
 
@@ -17,7 +17,9 @@ app.use(express.json());
 
 const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
 
-// Load CSV dataset, keep complete rows
+/* =========================================================
+   🔹 LOAD CSV DATASET
+   ========================================================= */
 let dataset = [];
 function loadDataset() {
   try {
@@ -26,9 +28,8 @@ function loadDataset() {
       columns: true,
       skip_empty_lines: true,
       trim: true,
-    }).filter(
-      row => row["INFRA_ID"] && row["NAME"] && row["AI_TYPE"] && row["TASKS"]
-    );
+    }).filter((r) => r["INFRA_ID"] && r["NAME"] && r["AI_TYPE"] && r["TASKS"]);
+
     dataset = rows;
     console.log(`✅ Loaded ${rows.length} valid rows`);
   } catch (err) {
@@ -37,78 +38,210 @@ function loadDataset() {
 }
 loadDataset();
 
-app.post("/chat", async (req, res) => {
-  const { message } = req.body;
-  if (!message || typeof message !== "string") {
-    return res.status(400).json({ error: "Missing or invalid 'message'." });
-  }
+/* =========================================================
+   🔹 SYSTEM PROMPT
+   ========================================================= */
+const systemPrompt = `
+You are ME-AI — a friendly yet precise assistant for the ME-NEXUS dashboard.
 
-  const lowerMsg = message.toLowerCase();
+### PERSONALITY
+- Greet the user naturally (e.g., "Hey there!", "Welcome back!", "Hope your day’s going great!").
+- Keep a warm, conversational tone but remain professional and helpful.
 
-  // Quick relevance check: if message seems unrelated, bail early
-  const allowedKeywords = [
-    "ai", "tool", "infrastructure", "dataset", "infra_id", "task", "model",
-    "training", "inference", "name", "organization", "framework", "parent",
-    "foundational_model", "year_launched", "funding"
-  ];
-  const isRelevant = allowedKeywords.some(k => lowerMsg.includes(k));
-  if (!isRelevant) {
-    return res.json({
-      reply: "Sorry, I’m only able to help with questions related to the dashboard data."
-    });
-  }
+### KNOWLEDGE
+You have access to a dataset of AI infrastructure tools (each with NAME, INFRA_ID, TASKS, FOUNDATIONAL_MODEL, etc.).
 
-  // Filter dataset for rows that mention the message text
-  const relevantRows = dataset.filter(r => 
-    Object.values(r).join(" ").toLowerCase().includes(lowerMsg)
-  ).slice(0, 10);  // limit to top 10
+### INTERNET ACCESS
+You may use the "search(query)" tool ONLY to:
+1. Find **recent updates, news, or announcements** about tools already in the dataset.
+2. Get more details about a known tool if the dataset lacks that info.
 
-  if (relevantRows.length === 0) {
-    return res.json({
-      reply: "Sorry, I couldn’t find anything related to that in the dataset."
-    });
-  }
-
-  // Build a compact tabular dump of relevant rows
-  const rowDump = relevantRows.map(r => {
-    return `INFRA_ID: ${r.INFRA_ID} | NAME: ${r.NAME} | AI_TYPE: ${r.AI_TYPE} | TASKS: ${r.TASKS} | FOUNDATIONAL_MODEL: ${r.FOUNDATIONAL_MODEL} | YEAR_LAUNCHED: ${r.YEAR_LAUNCHED}`;
-  }).join("\n");
-
-  const systemPrompt = `
-You are ME-AI, a precise assistant for the provided dataset of AI infrastructure tools.
-### YOUR JOB:
-- Use the dataset rows provided below.
-- If the user asks about a specific tool (by NAME or INFRA_ID), find it and answer based on the dataset values (e.g., FOUNDATIONAL_MODEL, TASKS, YEAR_LAUNCHED).
-- Do **not** describe the dataset structure or list columns generically.
-- If the dataset does not contain the requested information, say: "I couldn’t find that information in the dataset."
-- If the user asks something unrelated to the dataset, say: "Sorry, I’m only able to help with questions related to the dashboard data."
-### STYLE:
-- Answer concisely with the relevant values.
-- Reference column names exactly.
+### RULES
+- If the user asks about a tool, find it by NAME or INFRA_ID and answer directly from the dataset.
+- If the question is unrelated to AI tools or the dashboard, respond:
+  "Sorry, I can only help with questions about AI tools and dashboard data."
+- If the data doesn’t exist in the dataset, use the web search.
+- Always answer concisely and politely.
 `;
 
-  // Streaming chat response
+/* =========================================================
+   🔹 SIMPLE IN-MEMORY SESSION CONTEXT
+   ========================================================= */
+const sessions = new Map();
+
+/* =========================================================
+   🔹 CHAT ENDPOINT
+   ========================================================= */
+app.post("/chat", async (req, res) => {
+  const { message, sessionId } = req.body;
+  if (!message) return res.status(400).json({ error: "Missing 'message'." });
+
+  const lowerMsg = message.toLowerCase();
+  const history = sessions.get(sessionId) || [];
+
+  // Filter dataset for relevant rows
+  const relevantRows = dataset
+    .filter((r) =>
+      Object.values(r).join(" ").toLowerCase().includes(lowerMsg)
+    )
+    .slice(0, 10);
+
+  const rowDump = relevantRows
+    .map(
+      (r) =>
+        `INFRA_ID: ${r.INFRA_ID} | NAME: ${r.NAME} | AI_TYPE: ${r.AI_TYPE} | TASKS: ${r.TASKS} | FOUNDATIONAL_MODEL: ${r.FOUNDATIONAL_MODEL} | YEAR_LAUNCHED: ${r.YEAR_LAUNCHED}`
+    )
+    .join("\n");
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  const stream = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    stream: true,
-    temperature: 0.2,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Relevant rows:\n${rowDump}\n\nUser question: ${message}` }
-    ]
-  });
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      stream: true,
+      temperature: 0.25,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "search",
+            description: "Fetch recent info or updates about a known tool from the web",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string", description: "Search query text" },
+              },
+              required: ["query"],
+            },
+          },
+        },
+      ],
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...history,
+        {
+          role: "user",
+          content: `Relevant dataset rows:\n${rowDump}\n\nUser: ${message}`,
+        },
+      ],
+    });
 
-  for await (const chunk of stream) {
-    const token = chunk.choices?.[0]?.delta?.content || "";
-    res.write(token);
+    let buffer = "";
+
+    for await (const chunk of completion) {
+      const choice = chunk.choices?.[0];
+      const toolCall = choice?.delta?.tool_calls?.[0];
+      const token = choice?.delta?.content || "";
+
+      // Stream text tokens directly
+      if (token) {
+        buffer += token;
+        res.write(token);
+      }
+
+      // Handle tool call (web search)
+      if (toolCall && toolCall.function?.name === "search") {
+        const args = JSON.parse(toolCall.function.arguments);
+        const q = args.query;
+        console.log(`🌐 ME-AI websearch: ${q}`);
+
+        const results = await websearch(q);
+        const summary = results
+          .slice(0, 3)
+          .map((r) => `• [${r.title}](${r.link}) — ${r.snippet}`)
+          .join("\n");
+
+        const followUp = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0.3,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `Here are web search results for "${q}":\n${summary}\n\nSummarize in two concise sentences.`,
+            },
+          ],
+        });
+
+        const final = followUp.choices[0].message.content;
+        buffer += "\n\n" + final;
+        res.write("\n\n" + final);
+      }
+    }
+
+    // Save short-term context
+    history.push({ role: "user", content: message });
+    history.push({ role: "assistant", content: buffer });
+    sessions.set(sessionId, history);
+
+    res.end();
+  } catch (err) {
+    console.error("❌ Chat stream error:", err);
+    res.status(500).json({ error: "Streaming chat failed." });
   }
-  res.end();
 });
 
+/* =========================================================
+   🔹 POWER BI AUTH + EMBED ENDPOINTS
+   ========================================================= */
+app.post("/auth-token", async (req, res) => {
+  const { TENANT_ID, CLIENT_ID, CLIENT_SECRET } = process.env;
+  const authUrl = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
+  const scope = "https://analysis.windows.net/powerbi/api/.default";
+
+  try {
+    const response = await fetch(authUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        scope,
+      }),
+    });
+
+    if (!response.ok) throw new Error("Auth token request failed");
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error("Auth token error:", error);
+    res.status(500).json({ error: "Failed to fetch auth token" });
+  }
+});
+
+app.post("/embed-token", async (req, res) => {
+  const groupId = "4c6a6199-2d9c-423c-a366-7e72edc983ad";
+  const reportId = "9f92cc54-8318-44c4-a671-a020ea14ef56";
+  const authToken = req.body.authToken;
+
+  try {
+    const response = await fetch(
+      `https://api.powerbi.com/v1.0/myorg/groups/${groupId}/reports/${reportId}/GenerateToken`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ accessLevel: "View" }),
+      }
+    );
+
+    if (!response.ok) throw new Error("Failed to get embed token");
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error("Embed token error:", error);
+    res.status(500).json({ error: "Failed to get embed token" });
+  }
+});
+
+/* =========================================================
+   🔹 START SERVER
+   ========================================================= */
 app.listen(port, () => {
-  console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log(`🚀 ME-AI backend running on http://localhost:${port}`);
 });
