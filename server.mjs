@@ -161,7 +161,7 @@ app.post("/chat", async (req, res) => {
         } catch (err) {
           console.warn("⚠️ Skipping incomplete tool arguments:", toolCall.function.arguments);
           continue; // wait for the next chunk
-      . }
+       }
 
         if (q) {
           console.log(`🌐 ME-AI websearch: ${q}`);
@@ -274,3 +274,4 @@ t}
 app.listen(port, () => {
   console.log(`🚀 ME-AI backend running on http://localhost:${port}`);
 });
+
