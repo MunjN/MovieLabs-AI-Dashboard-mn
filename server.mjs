@@ -146,40 +146,47 @@ app.post("/chat", async (req, res) => {
 
       // Handle tool call (web search)
       if (toolCall && toolCall.function?.name === "search") {
-        const args = JSON.parse(toolCall.function.arguments);
-        const q = args.query;
-        console.log(`🌐 ME-AI websearch: ${q}`);
-
+        // 👇 FIX: Protect against partial tool arguments
+        let q = null;
         try {
-          const searchResults = await google.search(q, { safe: false });
-          const summary = searchResults.results
-            .slice(0, 3)
-            .map(
-              (r) =>
-                `• [${r.title}](${r.url}) — ${
-                  r.description?.slice(0, 200) || ""
-                }`
-            )
-            .join("\n");
-
-          const followUp = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            temperature: 0.3,
-            messages: [
-              { role: "system", content: systemPrompt },
-              {
-                role: "user",
-                content: `Here are web search results for "${q}":\n${summary}\n\nSummarize in two concise sentences.`,
-              },
-            ],
-          });
-
-          const final = followUp.choices[0].message.content;
-          buffer += "\n\n" + final;
-          res.write("\n\n" + final);
+          const args = JSON.parse(toolCall.function.arguments || "{}");
+          q = args.query;
         } catch (err) {
-          console.error("Web search failed:", err);
-          res.write("\n\n(Sorry, I couldn’t fetch live updates right now.)\n");
+          console.warn("⚠️ Skipping incomplete tool arguments:", toolCall.function.arguments);
+          continue; // wait for the next chunk
+        }
+
+        if (q) {
+          console.log(`🌐 ME-AI websearch: ${q}`);
+          try {
+            const searchResults = await google.search(q, { safe: false });
+            const summary = searchResults.results
+              .slice(0, 3)
+              .map(
+                (r) =>
+                  `• [${r.title}](${r.url}) — ${r.description?.slice(0, 200) || ""}`
+              )
+              .join("\n");
+
+            const followUp = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              temperature: 0.3,
+              messages: [
+                { role: "system", content: systemPrompt },
+                {
+                  role: "user",
+                  content: `Here are web search results for "${q}":\n${summary}\n\nSummarize in two concise sentences.`,
+                },
+              ],
+            });
+
+            const final = followUp.choices[0].message.content;
+            buffer += "\n\n" + final;
+            res.write("\n\n" + final);
+          } catch (err) {
+            console.error("Web search failed:", err);
+            res.write("\n\n(Sorry, I couldn’t fetch live updates right now.)\n");
+          }
         }
       }
     }
@@ -192,7 +199,9 @@ app.post("/chat", async (req, res) => {
     res.end();
   } catch (err) {
     console.error("❌ Chat stream error:", err);
-    res.status(500).json({ error: "Streaming chat failed." });
+    if (!res.headersSent)
+      res.status(500).json({ error: "Streaming chat failed." });
+    else res.end("\n\n[Error: Chat stream failed]");
   }
 });
 
