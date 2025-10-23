@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { parse } from "csv-parse/sync";
 import { OpenAI } from "openai";
-import { websearch } from "duckduckgo-search-api";
+import { search as websearch } from "duckduckgo-search";
 import fetch from "node-fetch";
 
 dotenv.config();
@@ -28,7 +28,9 @@ function loadDataset() {
       columns: true,
       skip_empty_lines: true,
       trim: true,
-    }).filter((r) => r["INFRA_ID"] && r["NAME"] && r["AI_TYPE"] && r["TASKS"]);
+    }).filter(
+      (r) => r["INFRA_ID"] && r["NAME"] && r["AI_TYPE"] && r["TASKS"]
+    );
 
     dataset = rows;
     console.log(`✅ Loaded ${rows.length} valid rows`);
@@ -107,7 +109,8 @@ app.post("/chat", async (req, res) => {
           type: "function",
           function: {
             name: "search",
-            description: "Fetch recent info or updates about a known tool from the web",
+            description:
+              "Fetch recent info or updates about a known tool from the web",
             parameters: {
               type: "object",
               properties: {
@@ -147,27 +150,37 @@ app.post("/chat", async (req, res) => {
         const q = args.query;
         console.log(`🌐 ME-AI websearch: ${q}`);
 
-        const results = await websearch(q);
-        const summary = results
-          .slice(0, 3)
-          .map((r) => `• [${r.title}](${r.link}) — ${r.snippet}`)
-          .join("\n");
+        try {
+          const results = await websearch(q, { safeSearch: false });
+          const summary = results
+            .slice(0, 3)
+            .map(
+              (r) =>
+                `• [${r.title}](${r.url}) — ${
+                  r.description?.slice(0, 200) || ""
+                }`
+            )
+            .join("\n");
 
-        const followUp = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          temperature: 0.3,
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: `Here are web search results for "${q}":\n${summary}\n\nSummarize in two concise sentences.`,
-            },
-          ],
-        });
+          const followUp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            temperature: 0.3,
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: `Here are web search results for "${q}":\n${summary}\n\nSummarize in two concise sentences.`,
+              },
+            ],
+          });
 
-        const final = followUp.choices[0].message.content;
-        buffer += "\n\n" + final;
-        res.write("\n\n" + final);
+          const final = followUp.choices[0].message.content;
+          buffer += "\n\n" + final;
+          res.write("\n\n" + final);
+        } catch (err) {
+          console.error("Web search failed:", err);
+          res.write("\n\n(Sorry, I couldn’t fetch live updates right now.)\n");
+        }
       }
     }
 
