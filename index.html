@@ -408,42 +408,76 @@ signupTab.addEventListener('click',()=>{signupTab.classList.add('active');loginT
   }
 </script>
 <script>
-// async function initialize(idToken){
-  const backendUrl="https://movielabs-ai-dashboard-mn.onrender.com";
-  const embedUrl="https://app.powerbi.com/reportEmbed?reportId=9f92cc54-8318-44c4-a671-a020ea14ef56&groupId=4c6a6199-2d9c-423c-a366-7e72edc983ad&w=2&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLUNBTkFEQS1DRU5UUkFMLXJlZGlyZWN0LmFuYWx5c2lzLndpbmRvd3MubmV0IiwiZW1iZWRGZWF0dXJlcyI6eyJ1c2FnZU1ldHJpY3NWTmV4dCI6dHJ1ZX19";
-  let embedToken=null;
-  async function fetchAuthToken(){const r=await fetch(`${backendUrl}/auth-token`,{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();return d.access_token;}
-  async function fetchEmbedToken(authToken){const r=await fetch(`${backendUrl}/embed-token`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({authToken})});const d=await r.json();embedToken=d.token;}
-  function embedReport(){const models=window["powerbi-client"].models;const config={type:"report",tokenType:models.TokenType.Embed,accessToken:embedToken,embedUrl,id:"9f92cc54-8318-44c4-a671-a020ea14ef56",permissions:models.Permissions.All,settings:{filterPaneEnabled:false,navContentPaneEnabled:true}};const c=document.getElementById("reportContainer");powerbi.reset(c);powerbi.embed(c,config);}
-  try{
-    const authToken=await fetchAuthToken();
+async function initialize(idToken) {
+  const backendUrl = "https://movielabs-ai-dashboard-mn.onrender.com";
+  const embedUrl =
+    "https://app.powerbi.com/reportEmbed?reportId=9f92cc54-8318-44c4-a671-a020ea14ef56&groupId=4c6a6199-2d9c-423c-a366-7e72edc983ad&w=2&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLUNBTkFEQS1DRU5UUkFMLXJlZGlyZWN0LmFuYWx5c2lzLndpbmRvd3MubmV0IiwiZW1iZWRGZWF0dXJlcyI6eyJ1c2FnZU1ldHJpY3NWTmV4dCI6dHJ1ZX19";
+
+  let embedToken = null;
+
+  async function fetchAuthToken() {
+    const r = await fetch(`${backendUrl}/auth-token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const d = await r.json();
+    return d.access_token;
+  }
+
+  async function fetchEmbedToken(authToken) {
+    const r = await fetch(`${backendUrl}/embed-token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authToken }),
+    });
+    const d = await r.json();
+    embedToken = d.token;
+  }
+
+  function embedReport() {
+    const models = window["powerbi-client"].models;
+    const config = {
+      type: "report",
+      tokenType: models.TokenType.Embed,
+      accessToken: embedToken,
+      embedUrl,
+      id: "9f92cc54-8318-44c4-a671-a020ea14ef56",
+      permissions: models.Permissions.All,
+      settings: {
+        filterPaneEnabled: false,
+        navContentPaneEnabled: true,
+      },
+    };
+    const c = document.getElementById("reportContainer");
+    powerbi.reset(c);
+    powerbi.embed(c, config);
+  }
+
+  try {
+    const authToken = await fetchAuthToken();
     await fetchEmbedToken(authToken);
     embedReport();
-    
-    // -----------------------------------------------------------------
-    //  🔥  THIS IS THE NEW LINE TO SHOW THE CHAT FOOTER  🔥
-    // -----------------------------------------------------------------
-    chatFooter.style.display = 'flex'; 
-    // -----------------------------------------------------------------
-    
-    // Set up token refresh
-    setInterval(async()=>{
-      try{
-        console.log("Refreshing embed token...");
-        const newAuthToken=await fetchAuthToken();
-        await fetchEmbedToken(newAuthToken);
-        embedReport(); // Re-embed with new token
-        console.log("Embed token refreshed successfully");
-      } catch(e) {
-        console.error("Failed to refresh embed token:",e);
-      }
-    },40*60*1000); // 40 minutes
 
-  }catch(e){
-    console.error("Error initializing report:",e);
+    // Show the chat footer when report loads
+    chatFooter.style.display = "flex";
+
+    // Refresh embed token every 40 minutes
+    setInterval(async () => {
+      try {
+        console.log("Refreshing embed token...");
+        const newAuthToken = await fetchAuthToken();
+        await fetchEmbedToken(newAuthToken);
+        embedReport();
+        console.log("Embed token refreshed successfully");
+      } catch (e) {
+        console.error("Failed to refresh embed token:", e);
+      }
+    }, 40 * 60 * 1000);
+  } catch (e) {
+    console.error("Error initializing report:", e);
   }
 }
 </script>
+
 </body>
 </html>
-
